@@ -151,6 +151,54 @@ lazy val sparkNotebook = project.in(file(".")).enablePlugins(play.PlayScala).ena
   .settings(
     gitStampSettings: _*
   )
+	.settings(
+    mainClass in assembly := Some("play.core.server.NettyServer")
+    ,
+    fullClasspath in assembly += Attributed.blank(PlayKeys.playPackageAssets.value),
+
+    // Exclude commons-logging because it conflicts with the jcl-over-slf4j
+    libraryDependencies ~= { _ map(m => m.exclude("commons-logging", "commons-logging")) }
+    ,
+
+    assemblyShadeRules in assembly := Seq(
+      ShadeRule.rename("org.jboss.netty.**" -> "sparknotebook.shadednetty.@1").inAll
+    ),
+
+    // Hacked from sbt-assembly's defaults
+    assemblyMergeStrategy in assembly := {
+      case PathList("xsbt", xs @ _*) => MergeStrategy.discard
+      case x if Assembly.isConfigFile(x) =>
+        MergeStrategy.concat
+      case PathList(ps @ _*) if
+//        Assembly.isReadme(ps.last) ||
+          Assembly.isLicenseFile(ps.last) =>
+        MergeStrategy.rename
+      case PathList(ps @ _*) if Assembly.isSystemJunkFile(ps.last) =>
+        MergeStrategy.discard
+      case PathList("META-INF", xs @ _*) =>
+        (xs map {_.toLowerCase}) match {
+          case (x :: Nil) if Seq("manifest.mf", "index.list", "dependencies", "mailcap", "mimetypes.default") contains x =>
+            MergeStrategy.discard
+          case ps @ (x :: xs) if ps.last.endsWith(".sf") || ps.last.endsWith(".dsa") || ps.last.endsWith(".rsa") =>
+            MergeStrategy.discard
+          case "maven" :: xs =>
+            MergeStrategy.discard
+          case "plexus" :: xs =>
+            MergeStrategy.discard
+          case "services" :: xs =>
+            MergeStrategy.filterDistinctLines
+          case ("spring.schemas" :: Nil) | ("spring.handlers" :: Nil) | ("spring.tooling" :: Nil) =>
+            MergeStrategy.filterDistinctLines
+          case _ => MergeStrategy.first
+        }
+      case _ => MergeStrategy.first
+
+    }
+//    ,
+//    assemblyOption in as
+	)
+
+libraryDependencies in ThisBuild ~= { _ map(m => m.exclude("commons-logging", "commons-logging")) }
 
 lazy val subprocess = project.in(file("modules/subprocess"))
   .settings(libraryDependencies ++= playDeps)
@@ -168,6 +216,7 @@ lazy val subprocess = project.in(file("modules/subprocess"))
   )
   .settings(sharedSettings: _*)
   .settings(sparkSettings: _*)
+  .disablePlugins(sbtassembly.AssemblyPlugin)
 
 
 lazy val observable = Project(id = "observable", base = file("modules/observable"))
@@ -181,6 +230,7 @@ lazy val observable = Project(id = "observable", base = file("modules/observable
     )
   )
   .settings(sharedSettings: _*)
+  .disablePlugins(sbtassembly.AssemblyPlugin)
 
 lazy val common = Project(id = "common", base = file("modules/common"))
   .dependsOn(observable)
@@ -228,6 +278,7 @@ lazy val common = Project(id = "common", base = file("modules/common"))
                       ),
     buildInfoPackage := "notebook"
   )
+  .disablePlugins(sbtassembly.AssemblyPlugin)
 
 
 lazy val spark = Project(id = "spark", base = file("modules/spark"))
@@ -252,10 +303,12 @@ lazy val spark = Project(id = "spark", base = file("modules/spark"))
   )
   .settings(sharedSettings: _*)
   .settings(sparkSettings: _*)
+	.disablePlugins(sbtassembly.AssemblyPlugin)
 
 lazy val tachyon = Project(id = "tachyon", base = file("modules/tachyon"))
   .settings(sharedSettings: _*)
   .settings(tachyonSettings: _*)
+	.disablePlugins(sbtassembly.AssemblyPlugin)
 
 lazy val kernel = Project(id = "kernel", base = file("modules/kernel"))
   .dependsOn(common, subprocess, observable, spark)
@@ -269,3 +322,4 @@ lazy val kernel = Project(id = "kernel", base = file("modules/kernel"))
     unmanagedSourceDirectories in Compile += (sourceDirectory in Compile).value / ("scala-" + scalaBinaryVersion.value)
   )
   .settings(sharedSettings: _*)
+	.disablePlugins(sbtassembly.AssemblyPlugin)
